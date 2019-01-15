@@ -3,10 +3,6 @@
 
 #define STAR -1
 
-char *rules_file = "rule_tiny.csv";
-int rules_count = 20000;
-int rule_size = 11;
-
 int** alloc_two_d(int rows, int cols) {
     int **array = calloc(rows, sizeof(int*));
     for (int row = 0; row < rows; row++) {
@@ -32,11 +28,26 @@ int** load_csv(char *csv_file, int rows, int cols){
 
 
 int main(){
-    int **rules = load_csv(rules_file, rules_count, rule_size);
+    char *rules_file = "rule_tiny.csv";
+    int rules_count = 20000;
+    int tr_count = 20000;
+    int rule_size = 11;
+    int tr_size = rule_size - 1;
 
-    for (int i = 0; i < 10; i++) {
-        for (int j = 0; j < rule_size; j++) {
-            printf("%5.d ", rules[i][j]);
+    int **rules = load_csv(rules_file, rules_count, rule_size);
+    int **data = load_csv("transactions_tiny.csv", tr_count, tr_size);
+
+    for (int tr = 0; tr < tr_count; tr++) {
+        for (int row = 0; row < rules_count; row++) {
+            int ok = 1;
+            for (int col = 0; ok && col < 10; col++) {
+                if (data[tr][col] != rules[row][col] && rules[row][col] != -1) {
+                    ok = 0;
+                }
+            }
+            if (ok) {
+                printf("%d, ", rules[row][rule_size - 1]);
+            }
         }
         printf("\n");
     }
