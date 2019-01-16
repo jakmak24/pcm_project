@@ -4,7 +4,6 @@
 
 #define STAR 222222
 
-clock_t start, end;
 
 int** alloc_two_d(int rows, int cols) {
     int **array = calloc(rows, sizeof(int*));
@@ -49,6 +48,7 @@ int cmpfunc (const void * a, const void * b) {
 
 void dummy_search(int** data, int tr_count, int** rules, int rules_count){
 	
+	#pragma omp parallel for
 	for (int tr = 0; tr < tr_count; tr++) {
 		for (int row = 0; row < rules_count; row++) {
 			int ok = 1;
@@ -72,6 +72,7 @@ void dummy_search(int** data, int tr_count, int** rules, int rules_count){
 
 void sorted_search(int** data, int tr_count, int** rules, int rules_count){
 	
+	#pragma omp parallel for
 	for (int tr = 0; tr < tr_count; tr++) {
 		
 		int start_col = 0;
@@ -104,20 +105,25 @@ int main(){
     int tr_count = 20000;
     int rule_size = 11;
     int tr_size = rule_size - 1;
+	
+	struct timeval start, end;
+	gettimeofday(&start, NULL);
 
     int **rules = load_csv(rules_file, rules_count, rule_size);
     int **data = load_csv("transactions_tiny.csv", tr_count, tr_size);
 	
-	start = clock();
+	gettimeofday(&start, NULL);
 	dummy_search(data,tr_count,rules,rules_count);
-	end = clock();
-	printf("Dummy: %f\n",((double) (end - start)) / CLOCKS_PER_SEC);
+	gettimeofday(&end, NULL);
+	printf("Dummy: %f\n",(end.tv_sec  - start.tv_sec)+ 
+         (end.tv_usec - start.tv_usec) / 1.e6);
 	
 	qsort(rules, rules_count, sizeof(rules[0]), cmpfunc);
-	start = clock();
+	gettimeofday(&start, NULL);
 	sorted_search(data,tr_count,rules,rules_count);
-	end = clock();
-	printf("Sorted: %f\n",((double) (end - start)) / CLOCKS_PER_SEC);
+	gettimeofday(&end, NULL);
+	printf("Sorted: %f\n",(end.tv_sec  - start.tv_sec)+ 
+         (end.tv_usec - start.tv_usec) / 1.e6);
 
 
     return 0;
