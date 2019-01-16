@@ -1,7 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
 #define STAR 222222
+
+clock_t start, end;
 
 int** alloc_two_d(int rows, int cols) {
     int **array = calloc(rows, sizeof(int*));
@@ -42,7 +45,56 @@ int cmpfunc (const void * a, const void * b) {
 		}
 	}
 	return 0;
+}
 
+void dummy_search(int** data, int tr_count, int** rules, int rules_count){
+	
+	for (int tr = 0; tr < tr_count; tr++) {
+		for (int row = 0; row < rules_count; row++) {
+			int ok = 1;
+			for (int col = 0 ; col < 10; col++) {
+				
+				if (data[tr][col] != rules[row][col] && rules[row][col] != STAR) {
+					ok = 0;
+					break;
+				}
+				
+				
+			}
+			if (ok) {
+                //printf("%d,%d\n", tr,rules[row][10]);
+            }
+		}
+	}
+	
+}
+
+
+void sorted_search(int** data, int tr_count, int** rules, int rules_count){
+	
+	for (int tr = 0; tr < tr_count; tr++) {
+		
+		int start_col = 0;
+        for (int row = 0; row < rules_count; row++) {
+            int ok = 1;
+			while(rules[row][start_col] == STAR){
+				start_col++;
+			}
+			
+            for (int col = start_col; ok && col < 10; col++) {
+				
+                if (data[tr][col] != rules[row][col] && rules[row][col] != STAR) {
+                    ok = 0;
+					break;
+                }
+            }
+            if (ok) {
+                //printf("%d,%d\n", tr,rules[row][10]);
+            }
+			
+        }
+    }
+	
 }
 
 
@@ -56,32 +108,17 @@ int main(){
     int **rules = load_csv(rules_file, rules_count, rule_size);
     int **data = load_csv("transactions_tiny.csv", tr_count, tr_size);
 	
+	start = clock();
+	dummy_search(data,tr_count,rules,rules_count);
+	end = clock();
+	printf("Dummy: %f\n",((double) (end - start)) / CLOCKS_PER_SEC);
 	
 	qsort(rules, rules_count, sizeof(rules[0]), cmpfunc);
-	
+	start = clock();
+	sorted_search(data,tr_count,rules,rules_count);
+	end = clock();
+	printf("Sorted: %f\n",((double) (end - start)) / CLOCKS_PER_SEC);
 
-    for (int tr = 0; tr < tr_count; tr++) {
-		
-		int start_col = 0;
-        for (int row = 0; row < rules_count; row++) {
-            int ok = 1;
-			if(rules[row][start_col] == STAR){
-				start_col++;
-			}
-			
-            for (int col = start_col; ok && col < 10; col++) {
-				
-                if (data[tr][col] != rules[row][col] && rules[row][col] != STAR) {
-                    ok = 0;
-					break;
-                }
-            }
-            if (ok) {
-                printf("%d,%d\n", tr,rules[row][rule_size - 1]);
-            }
-			
-        }
-    }
 
     return 0;
 }
