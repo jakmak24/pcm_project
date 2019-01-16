@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define STAR 222222
+#define STAR 10000
 
 
 int** alloc_two_d(int rows, int cols) {
@@ -52,13 +52,11 @@ void dummy_search(int** data, int tr_count, int** rules, int rules_count){
 	for (int tr = 0; tr < tr_count; tr++) {
 		for (int row = 0; row < rules_count; row++) {
 			int ok = 1;
-			for (int col = 0 ; col < 10; col++) {
+			for (int col = 0 ; ok && col < 10; col++) {
 				
 				if (data[tr][col] != rules[row][col] && rules[row][col] != STAR) {
 					ok = 0;
-					break;
 				}
-				
 				
 			}
 			if (ok) {
@@ -70,14 +68,18 @@ void dummy_search(int** data, int tr_count, int** rules, int rules_count){
 }
 
 
+
 void sorted_search(int** data, int tr_count, int** rules, int rules_count){
 	
 	#pragma omp parallel for
 	for (int tr = 0; tr < tr_count; tr++) {
-		
+		//printf("%d\n", tr);
+
 		int start_col = 0;
         for (int row = 0; row < rules_count; row++) {
-            int ok = 1;
+			
+			int ok = 1;
+			
 			while(rules[row][start_col] == STAR){
 				start_col++;
 			}
@@ -86,7 +88,6 @@ void sorted_search(int** data, int tr_count, int** rules, int rules_count){
 				
                 if (data[tr][col] != rules[row][col] && rules[row][col] != STAR) {
                     ok = 0;
-					break;
                 }
             }
             if (ok) {
@@ -99,9 +100,10 @@ void sorted_search(int** data, int tr_count, int** rules, int rules_count){
 }
 
 
+
 int main(){
-    char *rules_file = "rule_tiny.csv";
-    int rules_count = 20000;
+    char *rules_file = "rule_2M.csv";
+    int rules_count = 2000000;
     int tr_count = 20000;
     int rule_size = 11;
     int tr_size = rule_size - 1;
@@ -109,23 +111,27 @@ int main(){
 	struct timeval start, end;
 	gettimeofday(&start, NULL);
 
+	printf("Loading rules\n");
     int **rules = load_csv(rules_file, rules_count, rule_size);
+	printf("Loading transactions\n");
     int **data = load_csv("transactions_tiny.csv", tr_count, tr_size);
 	
-	gettimeofday(&start, NULL);
-	dummy_search(data,tr_count,rules,rules_count);
-	gettimeofday(&end, NULL);
-	printf("Dummy: %f\n",(end.tv_sec  - start.tv_sec)+ 
-         (end.tv_usec - start.tv_usec) / 1.e6);
+	// gettimeofday(&start, NULL);
+	// dummy_search(data,tr_count,rules,rules_count);
+	// gettimeofday(&end, NULL);
+	// printf("Dummy: %f\n",(end.tv_sec  - start.tv_sec)+ (end.tv_usec - start.tv_usec) / 1.e6);
 	
+	printf("Sorting rules\n");
 	qsort(rules, rules_count, sizeof(rules[0]), cmpfunc);
+	
+	printf("Sorted: start\n");
 	gettimeofday(&start, NULL);
+	
 	sorted_search(data,tr_count,rules,rules_count);
+	
 	gettimeofday(&end, NULL);
-	printf("Sorted: %f\n",(end.tv_sec  - start.tv_sec)+ 
-         (end.tv_usec - start.tv_usec) / 1.e6);
-
-
+	printf("Sorted: %f\n",(end.tv_sec  - start.tv_sec)+ (end.tv_usec - start.tv_usec) / 1.e6);
+	
     return 0;
 }
 
