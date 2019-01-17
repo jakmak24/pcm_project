@@ -2,8 +2,8 @@
 #include <stdlib.h>
 #include <sys/time.h>
 
-#define STAR 99
-#define MAX_MASK 7
+#define STAR -1
+#define MAX_MASK 1023
 
 
 int** alloc_two_d(int rows, int cols) {
@@ -32,7 +32,7 @@ int** load_csv(char *csv_file, int rows, int cols, int add_cols){
 int cmpfunc (const void * a, const void * b) {
 	const int **r1 = (const int**)a;
 	const int **r2 = (const int**)b;
-    int mask_index = 4;
+    int mask_index = 11;
     int mask_diff = (*r1)[mask_index] - (*r2)[mask_index];
     if (mask_diff) {
         return mask_diff;
@@ -40,11 +40,17 @@ int cmpfunc (const void * a, const void * b) {
     return (*r1)[mask_index + 1] - (*r2)[mask_index + 1];
 }
 
+int cmphsh (const void * a, const void * b) {
+    int r1 = *(int*) a;
+    int **r2 = (int**) b;
+    return r1 - (*r2)[12];
+}
+
 int main(){
-    char *rules_file = "tiny.csv";
-    int rules_count = 15;
-    int tr_count = 15;
-    int rule_size = 4;
+    char *rules_file = "rule_2M.csv";
+    int rules_count = 2000000;
+    int tr_count = 5000;
+    int rule_size = 11;
     int tr_size = rule_size - 1;
 	
 	struct timeval start, end;
@@ -53,7 +59,7 @@ int main(){
 	printf("Loading rules\n");
     int **rules = load_csv(rules_file, rules_count, rule_size, 2);
 	printf("Loading transactions\n");
-    int **data = load_csv("tiny_tr.csv", tr_count, tr_size, 0);
+    int **data = load_csv("transactions_0.csv", tr_count, tr_size, 0);
 	
     for (int i = 0; i < rules_count; i++) {
         int mask = 0;
@@ -72,31 +78,24 @@ int main(){
 	printf("Sorting rules\n");
 	qsort(rules, rules_count, sizeof(rules[0]), cmpfunc);
 
-    for (int i = 0; i < rules_count; i++) {
-        for (int j = 0; j < rule_size + 2; j++) {
-            printf("%5.1d ", rules[i][j]);
-        }
-        printf("\n");
-    }
-
     int mask_indexes[MAX_MASK + 2] = {};
     mask_indexes[MAX_MASK + 1] = rules_count - 1;
     int cur_mask = rules[0][rule_size];
     for (int i = 1; i < rules_count; i++) {
         if (cur_mask != rules[i][rule_size]) {
+            for (int j = cur_mask + 1; j <= rules[i][rule_size]; j++) {
+                mask_indexes[j] = i;
+            }
             cur_mask = rules[i][rule_size];
-            mask_indexes[cur_mask] = i;
         }
-    }
-    for (int i = 0; i < MAX_MASK + 2; i++) {
-        printf("%d\n", mask_indexes[i]);
     }
 	
 	printf("Sorted: start\n");
 	gettimeofday(&start, NULL);
 
+#pragma omp parallel for
     for (int tr = 0; tr < tr_count; tr++) {
-        for (int mask = 0; mask <= MAX_MASK; mask++) {
+        for (int mask = 0; mask <= MAX_MASK - 1; mask++) {
             int tmp_mask = mask;
             int hash = 0;
             for (int i = tr_size - 1; i >= 0; i--) {
@@ -107,23 +106,25 @@ int main(){
             }
             int index_start = mask_indexes[mask];
             int index_end = mask_indexes[mask + 1];
-            for (int rule = index_start; rule < index_end; rule++) {
-                if (hash == rules[rule][rule_size + 1]) {
+            if (index_start == index_end) {
+                continue;
+            }
+            int **res = bsearch(&hash, &rules[index_start], index_end - index_start, sizeof(rules[0]), cmphsh);
+            if (res) {
+                while (res > rules && (*res)[rule_size + 1] == (*(res - 1))[rule_size + 1]) {
+                    res = res - 1;
+                }
+                while (res < rules + rules_count && (*res)[rule_size + 1] == hash) {
                     int ok = 1;
-                    for (int col = 0; ok && col < tr_size; col++) {
-                        ok = (rules[rule][col] == STAR) || (rules[rule][col] == data[tr][col]);
+                    for (int i = 0; ok && i < tr_size; i++) {
+                        ok == (*res)[i] == STAR || (*res)[i] == data[tr][i];
                     }
                     if (ok) {
-                        printf("mask: %d;   ", mask);
-                        for (int i = 0; i < tr_size; i++) {
-                            printf("%d ", data[tr][i]);
-                        }
-                        printf("    hash: %d;    ", hash);
-                        for (int i = 0; i < tr_size; i++) {
-                            printf("%d ", rules[rule][i]);
-                        }
-                        printf("\n");
+                        //printf("%d: %d\n", tr, (*res)[rule_size - 1]);
                     }
+                    res++;
+
+                // printf("%d: %d, previous %d\n", hash, (*res)[rule_size + 1], (*(res - 1))[rule_size + 1]);
                 }
             }
         }
