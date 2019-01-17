@@ -57,22 +57,26 @@ int main(){
 	gettimeofday(&start, NULL);
 
 	printf("Loading rules\n");
-    int **rules = load_csv(rules_file, rules_count, rule_size, 1);
+    int **rules = load_csv(rules_file, rules_count, rule_size, 2);
 	printf("Loading transactions\n");
     int **data = load_csv("tiny_tr.csv", tr_count, tr_size, 0);
 	
     for (int i = 0; i < rules_count; i++) {
         int mask = 0;
+        int hash = 0;
         for (int col = tr_size - 1; col >= 0; col--) {
             if (rules[i][col] == STAR) {
                 mask |= 1 << col;
+            } else {
+                hash += rules[i][col];
             }
         }
         rules[i][rule_size] = mask;
+        rules[i][rule_size + 1] = hash;
     }
 
     for (int i = 0; i < rules_count; i++) {
-        for (int j = 0; j < rule_size + 1; j++) {
+        for (int j = 0; j < rule_size + 2; j++) {
             printf("%5.1d ", rules[i][j]);
         }
         printf("\n");
