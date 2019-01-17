@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <sys/time.h>
 
-#define STAR 10000
+#define STAR 10001
 
 char *RULES_FILE = (char *)"rule_2M.csv";
 const int RULES_COUNT = 2000000;
@@ -111,12 +111,18 @@ void gpu_search(int* data_f, int tr_count,int tr_size, int* rules_f, int rules_c
     err = cudaMemcpy(result_g, result_f, tr_count*100*sizeof(int), cudaMemcpyHostToDevice);
     if(err!=cudaSuccess){printf("%s in %s at line %d\n",cudaGetErrorString(err),__FILE__,__LINE__);}
     
-    gpu_kernel<<<5,256>>>(data_g, tr_count, tr_size, rules_g, rules_count, rule_size, result_g, 100);
+    
+    int BLOCK_SIZE =1024;
+    int BLOCK_DIM = 5;
+    
+    //for(int i=0;i<){
+        gpu_kernel<<<BLOCK_DIM,BLOCK_SIZE>>>(data_g, tr_count, tr_size, rules_g, rules_count, rule_size, result_g, 100);
+    //}
     
     err = cudaMemcpy(result_f,result_g , tr_count*100*sizeof(int), cudaMemcpyDeviceToHost);
     if(err!=cudaSuccess){printf("%s in %s at line %d\n",cudaGetErrorString(err),__FILE__,__LINE__);}
     
-    // for(int i=0;i<2000;i++){
+    // for(int i=0;i<BLOCK_DIM*BLOCK_SIZE;i++){
         // for(int j=0;j<100;j++){
             // printf("%d,",result_f[i*100+j]);
         // }
