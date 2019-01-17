@@ -3,6 +3,7 @@
 #include <sys/time.h>
 
 #define STAR 10000
+#define MAX_MASK 7
 
 
 int** alloc_two_d(int rows, int cols) {
@@ -78,6 +79,19 @@ int main(){
         printf("\n");
     }
 
+    int mask_indexes[MAX_MASK + 2] = {};
+    mask_indexes[MAX_MASK + 1] = rules_count - 1;
+    int cur_mask = rules[0][rule_size];
+    for (int i = 1; i < rules_count; i++) {
+        if (cur_mask != rules[i][rule_size]) {
+            cur_mask = rules[i][rule_size];
+            mask_indexes[cur_mask] = i;
+        }
+    }
+    for (int i = 0; i < MAX_MASK + 2; i++) {
+        printf("%d\n", mask_indexes[i]);
+    }
+
 	
 	printf("Sorted: start\n");
 	gettimeofday(&start, NULL);
@@ -89,6 +103,3 @@ int main(){
 	
     return 0;
 }
-
-  
-  
