@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <sys/time.h>
 
-#define STAR 10000
+#define STAR 99
 #define MAX_MASK 7
 
 
@@ -60,7 +60,7 @@ int main(){
         int hash = 0;
         for (int col = tr_size - 1; col >= 0; col--) {
             if (rules[i][col] == STAR) {
-                mask |= 1 << col;
+                mask |= 1 << (tr_size - col - 1);
             } else {
                 hash += rules[i][col];
             }
@@ -91,12 +91,38 @@ int main(){
     for (int i = 0; i < MAX_MASK + 2; i++) {
         printf("%d\n", mask_indexes[i]);
     }
-
 	
 	printf("Sorted: start\n");
 	gettimeofday(&start, NULL);
-	
-    //search
+
+    for (int tr = 0; tr < tr_count; tr++) {
+        for (int mask = 0; mask <= MAX_MASK; mask++) {
+            int tmp_mask = mask;
+            int hash = 0;
+            for (int i = tr_size - 1; i >= 0; i--) {
+                if (tmp_mask % 2 == 0) {
+                    hash += data[tr][i];
+                }
+                tmp_mask /= 2;
+            }
+            int index_start = mask_indexes[mask];
+            int index_end = mask_indexes[mask + 1];
+            for (int rule = index_start; rule < index_end; rule++) {
+                if (hash == rules[rule][rule_size + 1]) {
+                    printf("mask: %d;   ", mask);
+                    for (int i = 0; i < tr_size; i++) {
+                        printf("%d ", data[tr][i]);
+                    }
+                    printf("    hash: %d;    ", hash);
+                    for (int i = 0; i < tr_size; i++) {
+                        printf("%d ", rules[rule][i]);
+                    }
+                    printf("\n");
+
+                }
+            }
+        }
+    }
 	
 	gettimeofday(&end, NULL);
 	printf("Sorted: %f\n",(end.tv_sec  - start.tv_sec)+ (end.tv_usec - start.tv_usec) / 1.e6);
