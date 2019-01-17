@@ -109,16 +109,21 @@ int main(){
             int index_end = mask_indexes[mask + 1];
             for (int rule = index_start; rule < index_end; rule++) {
                 if (hash == rules[rule][rule_size + 1]) {
-                    printf("mask: %d;   ", mask);
-                    for (int i = 0; i < tr_size; i++) {
-                        printf("%d ", data[tr][i]);
+                    int ok = 1;
+                    for (int col = 0; ok && col < tr_size; col++) {
+                        ok = (rules[rule][col] == STAR) || (rules[rule][col] == data[tr][col]);
                     }
-                    printf("    hash: %d;    ", hash);
-                    for (int i = 0; i < tr_size; i++) {
-                        printf("%d ", rules[rule][i]);
+                    if (ok) {
+                        printf("mask: %d;   ", mask);
+                        for (int i = 0; i < tr_size; i++) {
+                            printf("%d ", data[tr][i]);
+                        }
+                        printf("    hash: %d;    ", hash);
+                        for (int i = 0; i < tr_size; i++) {
+                            printf("%d ", rules[rule][i]);
+                        }
+                        printf("\n");
                     }
-                    printf("\n");
-
                 }
             }
         }
