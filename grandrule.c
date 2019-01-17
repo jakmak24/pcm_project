@@ -31,19 +31,12 @@ int** load_csv(char *csv_file, int rows, int cols, int add_cols){
 int cmpfunc (const void * a, const void * b) {
 	const int **r1 = (const int**)a;
 	const int **r2 = (const int**)b;
-
-	int i = 0;
-	int cmp = 0;
-	
-	while(i<10){
-		cmp = (*r1)[i]-(*r2)[i];
-		if ( cmp != 0){
-			return cmp;
-		}else{
-			i++;
-		}
-	}
-	return 0;
+    int mask_index = 4;
+    int mask_diff = (*r1)[mask_index] - (*r2)[mask_index];
+    if (mask_diff) {
+        return mask_diff;
+    }
+    return (*r1)[mask_index + 1] - (*r2)[mask_index + 1];
 }
 
 int main(){
@@ -75,6 +68,9 @@ int main(){
         rules[i][rule_size + 1] = hash;
     }
 
+	printf("Sorting rules\n");
+	qsort(rules, rules_count, sizeof(rules[0]), cmpfunc);
+
     for (int i = 0; i < rules_count; i++) {
         for (int j = 0; j < rule_size + 2; j++) {
             printf("%5.1d ", rules[i][j]);
@@ -82,8 +78,6 @@ int main(){
         printf("\n");
     }
 
-	printf("Sorting rules\n");
-	qsort(rules, rules_count, sizeof(rules[0]), cmpfunc);
 	
 	printf("Sorted: start\n");
 	gettimeofday(&start, NULL);
