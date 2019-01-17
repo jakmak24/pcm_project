@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
+#include <sys/time.h>
 
 #define STAR 10000
 
@@ -13,8 +13,8 @@ int** alloc_two_d(int rows, int cols) {
     return array;
 }
 
-int** load_csv(char *csv_file, int rows, int cols){
-    int **data = alloc_two_d(rows, cols);
+int** load_csv(char *csv_file, int rows, int cols, int add_cols){
+    int **data = alloc_two_d(rows, cols + add_cols);
     FILE* file = fopen(csv_file, "r");
     for (int row = 0; row < rows; row++) {
         for (int col = 0; col < cols; col++) {
@@ -46,88 +46,45 @@ int cmpfunc (const void * a, const void * b) {
 	return 0;
 }
 
-void dummy_search(int** data, int tr_count, int** rules, int rules_count){
-	
-	#pragma omp parallel for
-	for (int tr = 0; tr < tr_count; tr++) {
-		for (int row = 0; row < rules_count; row++) {
-			int ok = 1;
-			for (int col = 0 ; ok && col < 10; col++) {
-				
-				if (data[tr][col] != rules[row][col] && rules[row][col] != STAR) {
-					ok = 0;
-				}
-				
-			}
-			if (ok) {
-                //printf("%d,%d\n", tr,rules[row][10]);
-            }
-		}
-	}
-	
-}
-
-
-
-void sorted_search(int** data, int tr_count, int** rules, int rules_count){
-	
-	#pragma omp parallel for
-	for (int tr = 0; tr < tr_count; tr++) {
-		//printf("%d\n", tr);
-
-		int start_col = 0;
-        for (int row = 0; row < rules_count; row++) {
-			
-			int ok = 1;
-			
-			while(rules[row][start_col] == STAR){
-				start_col++;
-			}
-			
-            for (int col = start_col; ok && col < 10; col++) {
-				
-                if (data[tr][col] != rules[row][col] && rules[row][col] != STAR) {
-                    ok = 0;
-                }
-            }
-            if (ok) {
-                //printf("%d,%d\n", tr,rules[row][10]);
-            }
-			
-        }
-    }
-	
-}
-
-
-
 int main(){
-    char *rules_file = "rule_2M.csv";
-    int rules_count = 2000000;
-    int tr_count = 20000;
-    int rule_size = 11;
+    char *rules_file = "tiny.csv";
+    int rules_count = 15;
+    int tr_count = 15;
+    int rule_size = 4;
     int tr_size = rule_size - 1;
 	
 	struct timeval start, end;
 	gettimeofday(&start, NULL);
 
 	printf("Loading rules\n");
-    int **rules = load_csv(rules_file, rules_count, rule_size);
+    int **rules = load_csv(rules_file, rules_count, rule_size, 1);
 	printf("Loading transactions\n");
-    int **data = load_csv("transactions_tiny.csv", tr_count, tr_size);
+    int **data = load_csv("tiny_tr.csv", tr_count, tr_size, 0);
 	
-	// gettimeofday(&start, NULL);
-	// dummy_search(data,tr_count,rules,rules_count);
-	// gettimeofday(&end, NULL);
-	// printf("Dummy: %f\n",(end.tv_sec  - start.tv_sec)+ (end.tv_usec - start.tv_usec) / 1.e6);
-	
+    for (int i = 0; i < rules_count; i++) {
+        int mask = 0;
+        for (int col = tr_size - 1; col >= 0; col--) {
+            if (rules[i][col] == STAR) {
+                mask |= 1 << col;
+            }
+        }
+        rules[i][rule_size] = mask;
+    }
+
+    for (int i = 0; i < rules_count; i++) {
+        for (int j = 0; j < rule_size + 1; j++) {
+            printf("%5.1d ", rules[i][j]);
+        }
+        printf("\n");
+    }
+
 	printf("Sorting rules\n");
 	qsort(rules, rules_count, sizeof(rules[0]), cmpfunc);
 	
 	printf("Sorted: start\n");
 	gettimeofday(&start, NULL);
 	
-	sorted_search(data,tr_count,rules,rules_count);
+    //search
 	
 	gettimeofday(&end, NULL);
 	printf("Sorted: %f\n",(end.tv_sec  - start.tv_sec)+ (end.tv_usec - start.tv_usec) / 1.e6);
