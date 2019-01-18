@@ -6,13 +6,15 @@ RULES_LENGTH = 2000000
 SPARSE_LEVEL = 10
 
 def wrap(n):
-    if n > MAX_VALUE:
+    if n >= MAX_VALUE:
         return "*"
     else:
         return str(n)
 
 def random_line(sparse = SPARSE_LEVEL):
-    return [ wrap(random.randint(0, sparse*MAX_VALUE)) for _ in range(10) ]
+    line = [ wrap(random.randint(0, sparse*MAX_VALUE)) for _ in range(9)]
+    line.insert(random.randint(0,10),str(random.randint(0,MAX_VALUE)))
+    return line
     
 def random_class():
     return str(random.randint(0, MAX_CLASS))
