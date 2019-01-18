@@ -65,9 +65,9 @@ int main(){
     for (int i = 0; i < rules_count; i++) {
         int mask = 0;
         int hash = 0;
-        for (int col = tr_size - 1; col >= 0; col--) {
+        for (int col = 0; col <tr_size ; col++) {
             if (rules[i][col] == STAR) {
-                mask |= 1 << (tr_size - col - 1);
+                mask |= 1 << (col);
             } else {
                 hash += rules[i][col];
             }
@@ -100,12 +100,12 @@ int main(){
 	printf("Sorted: start\n");
 	gettimeofday(&start, NULL);
 
-#pragma omp parallel for
+    #pragma omp parallel for
     for (int tr = 0; tr < tr_count; tr++) {
         for (int mask = 0; mask < MAX_MASK ; mask++) {
             int tmp_mask = mask;
             int hash = 0;
-            for (int i = tr_size - 1; i >= 0; i--) {
+            for (int i = 0; i <tr_size; i++) {
                 if (tmp_mask % 2 == 0) {
                     hash += data[tr][i];
                 }
@@ -113,6 +113,7 @@ int main(){
             }
             int index_start = mask_indexes[mask];
             int index_end = mask_indexes[mask + 1];
+            
             if (index_start != index_end) {
 
                 int **res = bsearch(&hash, &rules[index_start], index_end - index_start, sizeof(rules[0]), cmphsh);
@@ -130,7 +131,6 @@ int main(){
                             //printf("%d: %d\n", tr, (*res)[rule_size - 1]);
                         }
                         res++;
-
                     //printf("%d: %d, previous %d\n", hash, (*res)[rule_size + 1], (*(res - 1))[rule_size + 1]);
                     }
                 }
