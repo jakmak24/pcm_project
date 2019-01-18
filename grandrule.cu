@@ -53,7 +53,7 @@ void searchCPU(int *rules, int rules_count ,int rule_size,int rule_t_size, int *
             
             if (index_start != index_end) {
 
-                int *res = (int *)bsearch(&hash, rules+(index_start)*rule_t_size , index_end - index_start, sizeof(int)*rule_t_size, cmphsh);
+                int *res = (int *)bsearch(&hash, rules+(index_start)*rule_t_size , index_end - index_start, sizeof(int)*rule_t_size,cmphsh);
                 if (res) {
                     while (res > rules && (*(res +rule_size+1)) == (*(res - rule_t_size +rule_size+1))) {
                         res = res - rule_t_size;
@@ -61,13 +61,13 @@ void searchCPU(int *rules, int rules_count ,int rule_size,int rule_t_size, int *
                     while (res < rules + rules_count*rule_t_size && (*(res + rule_size + 1)) == hash) {
                         int ok = 1;
                         for (int i = 0; ok && i < tr_size; i++) {
-                            ok = ((*(res+i)) == STAR || ((*res+i)) == data[tr*tr_size + i]);
+                            ok = ((*(res+i)) == STAR || ((*(res+i)) == data[tr*tr_size + i]));
                         }
                         if (ok) {
-                           printf("%d: %d\n", tr, (*(res + rule_size - 1)));
+                           //printf("%d: %d\n", tr, (*(res + rule_size - 1)));
                         }
                         res+=rule_t_size;
-                        printf("%d: %d, previous %d\n", hash, (*(res + rule_size + 1)), (*(res - rule_t_size+ rule_size + 1)));
+                        //printf("%d: %d, previous %d\n", hash, (*(res + rule_size + 1)), (*(res - rule_t_size+ rule_size + 1)));
                     }
                 }
             }
@@ -76,31 +76,25 @@ void searchCPU(int *rules, int rules_count ,int rule_size,int rule_t_size, int *
 }
 
 __device__
-int cmphsh_gpu (const int * a, const int * b) {
-    int r1 = *(int*) a;
-    int *r2 = (int*) b;
-    return r1 - (*(r2+12));
-}
+int bsearch_gpu(int key, int *rules,int rule_t_size,int start,int end){
 
-__device__
-int *bsearch_gpu(const int *key, const int *base, size_t num, size_t size,int (*cmp)(const int *key, const int *elt)){
-	const int *pivot;
-	int result;
+	int result,pivot;
+    int num = end - start;
 
 	while (num > 0) {
-		pivot = base + (num >> 1) * size;
-		result = cmp(key, pivot);
+		pivot = start + (num >> 1);
+		result = key - rules[pivot*rule_t_size + 12];
 
 		if (result == 0)
-			return (int *)pivot;
+			return pivot;
 
 		if (result > 0) {
-			base = pivot + size;
+			start = pivot + 1;
 			num--;
 		}
 		num >>= 1;
 	}
-	return NULL;
+	return -1;
 }
 
 __global__
@@ -123,20 +117,21 @@ void search_kernel(int *rules, int rules_count ,int rule_size,int rule_t_size, i
         
         if (index_start != index_end) {
 
-            int *res = (int *)bsearch_gpu(&hash, rules+(index_start)*rule_t_size, index_end - index_start, sizeof(int)*rule_t_size, cmphsh_gpu);
-            if (res) {
-                while (res > rules && (*(res +rule_size+1)) == (*(res - rule_t_size +rule_size+1))) {
-                    res = res - rule_t_size;
+            int found = bsearch_gpu(hash, rules, rule_t_size, index_start,index_end);
+            if (found != -1) {
+                
+                while (found > 0 && (rules[found*rule_t_size + rule_size+1] == rules[(found-1)*rule_t_size + rule_size+1])) {
+                    found--;
                 }
-                while (res < rules + rules_count*rule_t_size && (*(res + rule_size + 1)) == hash) {
+                while (found < rules_count && rules[found*rule_t_size +rule_size+1] == hash) {
                     int ok = 1;
                     for (int i = 0; ok && i < tr_size; i++) {
-                        ok = ((*(res+i)) == STAR || ((*res+i)) == data[tr*tr_size + i]);
+                        ok = (rules[found*rule_t_size +i] == STAR || (rules[found*rule_t_size +i] == data[tr*tr_size + i]));
                     }
                     if (ok) {
-                       result[tr*result_size + (*(res + rule_size - 1)) ]+=1;
+                       result[tr*result_size + rules[found*rule_t_size +rule_size -1] ]+=1;
                     }
-                    res+=rule_t_size;
+                    found++;
                 }
             }
         }
@@ -153,39 +148,41 @@ void searchGPU(int *rules, int rules_count ,int rule_size,int rule_t_size, int *
     int* result_g ;
     
     int* result = (int*)calloc(tr_count*100,sizeof(int));
-    
-    err = cudaMalloc((void **)&data_g, tr_count*tr_size*sizeof(int));
-    if(err!=cudaSuccess){printf("%s in %s at line %d\n",cudaGetErrorString(err),__FILE__,__LINE__);}
+   
     err = cudaMalloc((void **)&rules_g, rules_count*rule_t_size*sizeof(int));
     if(err!=cudaSuccess){printf("%s in %s at line %d\n",cudaGetErrorString(err),__FILE__,__LINE__);}
     err = cudaMalloc((void **)&mask_indexes_g, (MAX_MASK+1)*sizeof(int));
     if(err!=cudaSuccess){printf("%s in %s at line %d\n",cudaGetErrorString(err),__FILE__,__LINE__);}
     err = cudaMalloc((void **)&result_g, tr_count*100*sizeof(int));
     if(err!=cudaSuccess){printf("%s in %s at line %d\n",cudaGetErrorString(err),__FILE__,__LINE__);}
-    
-    err = cudaMemcpy(data_g, data, tr_count*tr_size*sizeof(int), cudaMemcpyHostToDevice);
+    err = cudaMalloc((void **)&data_g, tr_count*tr_size*sizeof(int));
     if(err!=cudaSuccess){printf("%s in %s at line %d\n",cudaGetErrorString(err),__FILE__,__LINE__);}
+    
     err = cudaMemcpy(rules_g, rules, rules_count*rule_t_size*sizeof(int), cudaMemcpyHostToDevice);
     if(err!=cudaSuccess){printf("%s in %s at line %d\n",cudaGetErrorString(err),__FILE__,__LINE__);}
-    err = cudaMemcpy(mask_indexes_g, mask_indexes, tr_count*100*sizeof(int), cudaMemcpyHostToDevice);
+    err = cudaMemcpy(mask_indexes_g, mask_indexes, (MAX_MASK+1)*sizeof(int), cudaMemcpyHostToDevice);
+    if(err!=cudaSuccess){printf("%s in %s at line %d\n",cudaGetErrorString(err),__FILE__,__LINE__);}
+
+    err = cudaMemcpy(data_g, data, tr_count*tr_size*sizeof(int), cudaMemcpyHostToDevice);
     if(err!=cudaSuccess){printf("%s in %s at line %d\n",cudaGetErrorString(err),__FILE__,__LINE__);}
     err = cudaMemcpy(result_g, result, tr_count*100*sizeof(int), cudaMemcpyHostToDevice);
     if(err!=cudaSuccess){printf("%s in %s at line %d\n",cudaGetErrorString(err),__FILE__,__LINE__);}
-
+    
     int BLOCK_SIZE =256;
-    int BLOCK_DIM = 4;
+    int BLOCK_DIM = 16;
+
     
     search_kernel<<<BLOCK_DIM,BLOCK_SIZE>>>(rules_g,rules_count ,rule_size,rule_t_size,data_g,tr_count,tr_size,mask_indexes_g,MAX_MASK,result_g,100);
    
     err = cudaMemcpy(result, result_g , tr_count*100*sizeof(int), cudaMemcpyDeviceToHost);
     if(err!=cudaSuccess){printf("%s in %s at line %d\n",cudaGetErrorString(err),__FILE__,__LINE__);}
    
-    for(int i=0;i<BLOCK_DIM*BLOCK_SIZE;i++){
-        for(int j=0;j<100;j++){
-            printf("%d",result[i*100+j]);
-        }
-        printf("\n");
-    }
+    // for(int i=0;i<BLOCK_DIM*BLOCK_SIZE;i++){
+        // for(int j=0;j<100;j++){
+            // printf("%d",result[i*100+j]);
+        // }
+        // printf("\n");
+    // }
     
     err = cudaFree(data_g);
     if(err!=cudaSuccess){printf("%s in %s at line %d\n",cudaGetErrorString(err),__FILE__,__LINE__);}
@@ -206,7 +203,7 @@ int main(){
     int rule_size = 11;
     int rule_t_size = rule_size+2;
     char *transactions_file = (char *)"transactions_tiny.csv";
-    int tr_count = 2000;
+    int tr_count = 256*16;
     int tr_size = rule_size - 1;
     
     const int MAX_MASK = (1<<tr_size);
@@ -234,13 +231,9 @@ int main(){
         rules[i*rule_t_size + rule_size + 1] = hash;
     }
     
-
-
 	printf("Sorting rules\n");
 	qsort(rules, rules_count, sizeof(int)*rule_t_size, cmpfunc);
     
-
-
     int *mask_indexes = (int*)calloc(MAX_MASK + 1,sizeof(int));
     
     int cur_mask = rules[0 + rule_size];
@@ -259,11 +252,11 @@ int main(){
         }
     }
     
-	// printf("Sorted: start\n");
-	// gettimeofday(&start, NULL);
-    // searchCPU(rules,rules_count ,rule_size,rule_t_size,data,tr_count,tr_size,mask_indexes,MAX_MASK);
-	// gettimeofday(&end, NULL);
-	// printf("Sorted: %f\n",(end.tv_sec  - start.tv_sec)+ (end.tv_usec - start.tv_usec) / 1.e6);
+	printf("Sorted: start\n");
+	gettimeofday(&start, NULL);
+    searchCPU(rules,rules_count ,rule_size,rule_t_size,data,tr_count,tr_size,mask_indexes,MAX_MASK);
+	gettimeofday(&end, NULL);
+	printf("Sorted: %f\n",(end.tv_sec  - start.tv_sec)+ (end.tv_usec - start.tv_usec) / 1.e6);
     
     printf("Sorted: start\n");
 	gettimeofday(&start, NULL);
