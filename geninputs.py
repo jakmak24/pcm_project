@@ -3,6 +3,8 @@ import random
 MAX_VALUE = 10000
 MAX_CLASS = 100
 RULES_LENGTH = 2000000
+TR_LENGTH = 1000000
+TR_FILES = 2
 SPARSE_LEVEL = 10
 
 def wrap(n):
@@ -26,7 +28,7 @@ def write_rule(fname, size_ratio=1):
 
 def write_file(fname, size_ratio=1):
     with open(fname, 'w') as rulef:
-        for i in range(int(size_ratio * RULES_LENGTH)):
+        for i in range(int(size_ratio * TR_LENGTH)):
             rulef.write(";".join(random_line(sparse = 1)) + "\n")
         
         
@@ -34,7 +36,7 @@ if __name__ == '__main__':
     "Real input"
     ratio = 1
     write_rule("rule_2M.csv", ratio)
-    for i in range(0,2):
+    for i in range(0,TR_FILES):
         write_file("transactions_{}.csv".format(i), ratio)
     
     "Tiny input"

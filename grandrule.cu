@@ -4,6 +4,7 @@
 
 #define STAR -1
 
+
 void load_csv(int*data, char *csv_file, int rows, int cols, int cols_t){
     FILE* file = fopen(csv_file, "r");
     for (int row = 0; row < rows; row++) {
@@ -28,12 +29,25 @@ int cmpfunc (const void * a, const void * b) {
     return (*(r1+mask_index + 1)) - (*(r2+mask_index+1));
 }
 
+__host__ __device__ 
+int bsearch(int key, int *rules,int rule_t_size,int start,int end){
 
-int cmphsh (const void * a, const void * b) {
-    int r1 = *(int*) a;
-    int *r2 = (int*) b;
-    return r1 - (*(r2+12));
-    
+    int pivot,result;
+
+	while (end > start) {
+		pivot =  start + ((end-start)>>1);
+		result = key - rules[pivot*rule_t_size + 12];
+
+		if (result == 0)
+			return pivot;
+
+		if (result > 0) {
+			start = pivot + 1;
+		}else{
+            end = pivot;
+        }
+	}
+	return -1;
 }
 
 void searchCPU(int *rules, int rules_count ,int rule_size,int rule_t_size, int *data,int tr_count,int tr_size,int* mask_indexes, int MAX_MASK){
@@ -53,21 +67,21 @@ void searchCPU(int *rules, int rules_count ,int rule_size,int rule_t_size, int *
             
             if (index_start != index_end) {
 
-                int *res = (int *)bsearch(&hash, rules+(index_start)*rule_t_size , index_end - index_start, sizeof(int)*rule_t_size,cmphsh);
-                if (res) {
-                    while (res > rules && (*(res +rule_size+1)) == (*(res - rule_t_size +rule_size+1))) {
-                        res = res - rule_t_size;
+                int found = bsearch(hash, rules, rule_t_size, index_start,index_end);
+                if (found != -1) {
+                    
+                    while (found > 0 && (rules[found*rule_t_size + rule_size+1] == rules[(found-1)*rule_t_size + rule_size+1])) {
+                        found--;
                     }
-                    while (res < rules + rules_count*rule_t_size && (*(res + rule_size + 1)) == hash) {
+                    while (found < rules_count && rules[found*rule_t_size +rule_size+1] == hash) {
                         int ok = 1;
                         for (int i = 0; ok && i < tr_size; i++) {
-                            ok = ((*(res+i)) == STAR || ((*(res+i)) == data[tr*tr_size + i]));
+                            ok = (rules[found*rule_t_size +i] == STAR || (rules[found*rule_t_size +i] == data[tr*tr_size + i]));
                         }
                         if (ok) {
-                           //printf("%d: %d\n", tr, (*(res + rule_size - 1)));
+                           //printf("%d,%d\n",tr,rules[found*rule_t_size +rule_size -1]);
                         }
-                        res+=rule_t_size;
-                        //printf("%d: %d, previous %d\n", hash, (*(res + rule_size + 1)), (*(res - rule_t_size+ rule_size + 1)));
+                        found++;
                     }
                 }
             }
@@ -75,27 +89,6 @@ void searchCPU(int *rules, int rules_count ,int rule_size,int rule_t_size, int *
     }
 }
 
-__device__
-int bsearch_gpu(int key, int *rules,int rule_t_size,int start,int end){
-
-	int result,pivot;
-    int num = end - start;
-
-	while (num > 0) {
-		pivot = start + (num >> 1);
-		result = key - rules[pivot*rule_t_size + 12];
-
-		if (result == 0)
-			return pivot;
-
-		if (result > 0) {
-			start = pivot + 1;
-			num--;
-		}
-		num >>= 1;
-	}
-	return -1;
-}
 
 __global__
 void search_kernel(int *rules, int rules_count ,int rule_size,int rule_t_size, int *data,int tr_count,int tr_size,int* mask_indexes, int MAX_MASK, int*result,int result_size){
@@ -117,7 +110,7 @@ void search_kernel(int *rules, int rules_count ,int rule_size,int rule_t_size, i
         
         if (index_start != index_end) {
 
-            int found = bsearch_gpu(hash, rules, rule_t_size, index_start,index_end);
+            int found = bsearch(hash, rules, rule_t_size, index_start,index_end);
             if (found != -1) {
                 
                 while (found > 0 && (rules[found*rule_t_size + rule_size+1] == rules[(found-1)*rule_t_size + rule_size+1])) {
@@ -139,44 +132,37 @@ void search_kernel(int *rules, int rules_count ,int rule_size,int rule_t_size, i
     
 }
 
+void cudaAssert(int line,cudaError_t err){
+    if(err!=cudaSuccess){printf("%s in %s at line %d\n",cudaGetErrorString(err),__FILE__,line);}
+}
+
 void searchGPU(int *rules, int rules_count ,int rule_size,int rule_t_size, int *data,int tr_count,int tr_size,int* mask_indexes, int MAX_MASK){
     
-    cudaError_t err;
     int* data_g;
     int* rules_g;
     int* mask_indexes_g;
-    int* result_g ;
+    int* result_g;
     
     int* result = (int*)calloc(tr_count*100,sizeof(int));
    
-    err = cudaMalloc((void **)&rules_g, rules_count*rule_t_size*sizeof(int));
-    if(err!=cudaSuccess){printf("%s in %s at line %d\n",cudaGetErrorString(err),__FILE__,__LINE__);}
-    err = cudaMalloc((void **)&mask_indexes_g, (MAX_MASK+1)*sizeof(int));
-    if(err!=cudaSuccess){printf("%s in %s at line %d\n",cudaGetErrorString(err),__FILE__,__LINE__);}
-    err = cudaMalloc((void **)&result_g, tr_count*100*sizeof(int));
-    if(err!=cudaSuccess){printf("%s in %s at line %d\n",cudaGetErrorString(err),__FILE__,__LINE__);}
-    err = cudaMalloc((void **)&data_g, tr_count*tr_size*sizeof(int));
-    if(err!=cudaSuccess){printf("%s in %s at line %d\n",cudaGetErrorString(err),__FILE__,__LINE__);}
-    
-    err = cudaMemcpy(rules_g, rules, rules_count*rule_t_size*sizeof(int), cudaMemcpyHostToDevice);
-    if(err!=cudaSuccess){printf("%s in %s at line %d\n",cudaGetErrorString(err),__FILE__,__LINE__);}
-    err = cudaMemcpy(mask_indexes_g, mask_indexes, (MAX_MASK+1)*sizeof(int), cudaMemcpyHostToDevice);
-    if(err!=cudaSuccess){printf("%s in %s at line %d\n",cudaGetErrorString(err),__FILE__,__LINE__);}
+    cudaAssert(__LINE__,cudaMalloc((void **)&rules_g, rules_count*rule_t_size*sizeof(int)));
+    cudaAssert(__LINE__,cudaMalloc((void **)&mask_indexes_g, (MAX_MASK+1)*sizeof(int)));
+    cudaAssert(__LINE__,cudaMalloc((void **)&result_g, tr_count*100*sizeof(int)));
+    cudaAssert(__LINE__,cudaMalloc((void **)&data_g, tr_count*tr_size*sizeof(int)));
 
-    err = cudaMemcpy(data_g, data, tr_count*tr_size*sizeof(int), cudaMemcpyHostToDevice);
-    if(err!=cudaSuccess){printf("%s in %s at line %d\n",cudaGetErrorString(err),__FILE__,__LINE__);}
-    err = cudaMemcpy(result_g, result, tr_count*100*sizeof(int), cudaMemcpyHostToDevice);
-    if(err!=cudaSuccess){printf("%s in %s at line %d\n",cudaGetErrorString(err),__FILE__,__LINE__);}
-    
+    cudaAssert(__LINE__,cudaMemcpy(rules_g, rules, rules_count*rule_t_size*sizeof(int), cudaMemcpyHostToDevice));
+    cudaAssert(__LINE__,cudaMemcpy(mask_indexes_g, mask_indexes, (MAX_MASK+1)*sizeof(int), cudaMemcpyHostToDevice));
+
+    cudaAssert(__LINE__,cudaMemcpy(data_g, data, tr_count*tr_size*sizeof(int), cudaMemcpyHostToDevice));
+    cudaAssert(__LINE__,cudaMemcpy(result_g, result, tr_count*100*sizeof(int), cudaMemcpyHostToDevice));
+
     int BLOCK_SIZE =256;
     int BLOCK_DIM = 16;
 
-    
     search_kernel<<<BLOCK_DIM,BLOCK_SIZE>>>(rules_g,rules_count ,rule_size,rule_t_size,data_g,tr_count,tr_size,mask_indexes_g,MAX_MASK,result_g,100);
    
-    err = cudaMemcpy(result, result_g , tr_count*100*sizeof(int), cudaMemcpyDeviceToHost);
-    if(err!=cudaSuccess){printf("%s in %s at line %d\n",cudaGetErrorString(err),__FILE__,__LINE__);}
-   
+    cudaAssert(__LINE__,cudaMemcpy(result, result_g , tr_count*100*sizeof(int), cudaMemcpyDeviceToHost));
+
     // for(int i=0;i<BLOCK_DIM*BLOCK_SIZE;i++){
         // for(int j=0;j<100;j++){
             // printf("%d",result[i*100+j]);
@@ -184,16 +170,13 @@ void searchGPU(int *rules, int rules_count ,int rule_size,int rule_t_size, int *
         // printf("\n");
     // }
     
-    err = cudaFree(data_g);
-    if(err!=cudaSuccess){printf("%s in %s at line %d\n",cudaGetErrorString(err),__FILE__,__LINE__);}
-    err = cudaFree(rules_g);
-    if(err!=cudaSuccess){printf("%s in %s at line %d\n",cudaGetErrorString(err),__FILE__,__LINE__);}
-    err = cudaFree(mask_indexes_g);
-    if(err!=cudaSuccess){printf("%s in %s at line %d\n",cudaGetErrorString(err),__FILE__,__LINE__);}
-    err = cudaFree(result_g);
-    if(err!=cudaSuccess){printf("%s in %s at line %d\n",cudaGetErrorString(err),__FILE__,__LINE__);}
+    free(result);
+    cudaAssert(__LINE__,cudaFree(data_g));
+    cudaAssert(__LINE__,cudaFree(rules_g));
+    cudaAssert(__LINE__,cudaFree(mask_indexes_g));
+    cudaAssert(__LINE__,cudaFree(result_g));
+
     
-   
 }
 
 
