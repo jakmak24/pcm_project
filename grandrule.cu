@@ -96,6 +96,10 @@ void search_kernel(int curr_batch_size,int *rules, int rules_count ,int rule_siz
     int tr = blockIdx.x*blockDim.x + threadIdx.x;
     if(tr >= curr_batch_size)return;
     
+    for (int i=tr*result_size;i<(tr+1)*result_size;i++){
+        result[i]=0;
+    }
+    
     for (int mask = 0; mask < MAX_MASK ; mask++) {
         int tmp_mask = mask;
         int hash = 0;
@@ -164,7 +168,6 @@ void searchGPU(int *rules, int rules_count ,int rule_size,int rule_t_size, int *
             curr_batch_size = tr_count - batch_nr*batch_size;
         }
         cudaAssert(__LINE__,cudaMemcpy(data_g, data+batch_nr*batch_size*tr_size , curr_batch_size*tr_size*sizeof(int), cudaMemcpyHostToDevice));
-        cudaAssert(__LINE__,cudaMemcpy(result_g, result, curr_batch_size*100*sizeof(int), cudaMemcpyHostToDevice));
 
         search_kernel<<<BLOCK_DIM,BLOCK_SIZE>>>(curr_batch_size,rules_g,rules_count ,rule_size,rule_t_size,data_g,tr_count,tr_size,mask_indexes_g,MAX_MASK,result_g,100);
         cudaAssert(__LINE__,cudaThreadSynchronize());
@@ -178,10 +181,6 @@ void searchGPU(int *rules, int rules_count ,int rule_size,int rule_t_size, int *
             // }
             // printf("\n");
         // }
-        
-        for(int j=0;j<batch_size*100;j++){
-            result[j]=0;
-        }
         
     }
     
