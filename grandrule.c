@@ -3,8 +3,6 @@
 #include <sys/time.h>
 
 #define STAR -1
-#define MAX_MASK 1023
-
 
 int** alloc_two_d(int rows, int cols) {
     int **array = calloc(rows, sizeof(int*));
@@ -49,17 +47,20 @@ int cmphsh (const void * a, const void * b) {
 int main(){
     char *rules_file = "rule_2M.csv";
     int rules_count = 2000000;
-    int tr_count = 5000;
     int rule_size = 11;
+    char *transactions_file = "transactions_tiny.csv";
+    int tr_count = 5000;
     int tr_size = rule_size - 1;
-	
+    
+    const int MAX_MASK = (1<<tr_size);
+
 	struct timeval start, end;
 	gettimeofday(&start, NULL);
 
 	printf("Loading rules\n");
     int **rules = load_csv(rules_file, rules_count, rule_size, 2);
 	printf("Loading transactions\n");
-    int **data = load_csv("transactions_0.csv", tr_count, tr_size, 0);
+    int **data = load_csv(transactions_file, tr_count, tr_size, 0);
 	
     for (int i = 0; i < rules_count; i++) {
         int mask = 0;
@@ -78,8 +79,8 @@ int main(){
 	printf("Sorting rules\n");
 	qsort(rules, rules_count, sizeof(rules[0]), cmpfunc);
 
-    int mask_indexes[MAX_MASK + 2] = {};
-    mask_indexes[MAX_MASK + 1] = rules_count - 1;
+    int *mask_indexes = calloc(MAX_MASK + 1,sizeof(int));
+    
     int cur_mask = rules[0][rule_size];
     for (int i = 1; i < rules_count; i++) {
         if (cur_mask != rules[i][rule_size]) {
@@ -88,14 +89,20 @@ int main(){
             }
             cur_mask = rules[i][rule_size];
         }
+        
+        if( i==(rules_count-1)){
+            for(int j= cur_mask+1;j<MAX_MASK+1;j++){
+                mask_indexes[j]=rules_count;
+            }
+        }
     }
-	
+
 	printf("Sorted: start\n");
 	gettimeofday(&start, NULL);
 
 #pragma omp parallel for
     for (int tr = 0; tr < tr_count; tr++) {
-        for (int mask = 0; mask <= MAX_MASK - 1; mask++) {
+        for (int mask = 0; mask < MAX_MASK ; mask++) {
             int tmp_mask = mask;
             int hash = 0;
             for (int i = tr_size - 1; i >= 0; i--) {
@@ -106,25 +113,26 @@ int main(){
             }
             int index_start = mask_indexes[mask];
             int index_end = mask_indexes[mask + 1];
-            if (index_start == index_end) {
-                continue;
-            }
-            int **res = bsearch(&hash, &rules[index_start], index_end - index_start, sizeof(rules[0]), cmphsh);
-            if (res) {
-                while (res > rules && (*res)[rule_size + 1] == (*(res - 1))[rule_size + 1]) {
-                    res = res - 1;
-                }
-                while (res < rules + rules_count && (*res)[rule_size + 1] == hash) {
-                    int ok = 1;
-                    for (int i = 0; ok && i < tr_size; i++) {
-                        ok == (*res)[i] == STAR || (*res)[i] == data[tr][i];
-                    }
-                    if (ok) {
-                        //printf("%d: %d\n", tr, (*res)[rule_size - 1]);
-                    }
-                    res++;
+            if (index_start != index_end) {
 
-                // printf("%d: %d, previous %d\n", hash, (*res)[rule_size + 1], (*(res - 1))[rule_size + 1]);
+                int **res = bsearch(&hash, &rules[index_start], index_end - index_start, sizeof(rules[0]), cmphsh);
+                
+                if (res) {
+                    while (res > rules && (*res)[rule_size + 1] == (*(res - 1))[rule_size + 1]) {
+                        res = res - 1;
+                    }
+                    while (res < rules + rules_count && (*res)[rule_size + 1] == hash) {
+                        int ok = 1;
+                        for (int i = 0; ok && i < tr_size; i++) {
+                            ok == (*res)[i] == STAR || (*res)[i] == data[tr][i];
+                        }
+                        if (ok) {
+                            //printf("%d: %d\n", tr, (*res)[rule_size - 1]);
+                        }
+                        res++;
+
+                    //printf("%d: %d, previous %d\n", hash, (*res)[rule_size + 1], (*(res - 1))[rule_size + 1]);
+                    }
                 }
             }
         }
