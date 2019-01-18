@@ -5,9 +5,9 @@
 #define STAR -1
 
 int** alloc_two_d(int rows, int cols) {
-    int **array = calloc(rows, sizeof(int*));
+    int **array = (int**)calloc(rows, sizeof(int*));
     for (int row = 0; row < rows; row++) {
-        array[row] = calloc(cols, sizeof(int));
+        array[row] = (int*)calloc(cols, sizeof(int));
     }
     return array;
 }
@@ -45,10 +45,10 @@ int cmphsh (const void * a, const void * b) {
 }
 
 int main(){
-    char *rules_file = "rule_2M.csv";
+    char *rules_file = (char *)"rule_2M.csv";
     int rules_count = 2000000;
     int rule_size = 11;
-    char *transactions_file = "transactions_tiny.csv";
+    char *transactions_file = (char *)"transactions_tiny.csv";
     int tr_count = 5000;
     int tr_size = rule_size - 1;
     
@@ -79,7 +79,7 @@ int main(){
 	printf("Sorting rules\n");
 	qsort(rules, rules_count, sizeof(rules[0]), cmpfunc);
 
-    int *mask_indexes = calloc(MAX_MASK + 1,sizeof(int));
+    int *mask_indexes = (int*)calloc(MAX_MASK + 1,sizeof(int));
     
     int cur_mask = rules[0][rule_size];
     for (int i = 1; i < rules_count; i++) {
@@ -116,7 +116,7 @@ int main(){
             
             if (index_start != index_end) {
 
-                int **res = bsearch(&hash, &rules[index_start], index_end - index_start, sizeof(rules[0]), cmphsh);
+                int **res = (int **)bsearch(&hash, &rules[index_start], index_end - index_start, sizeof(rules[0]), cmphsh);
                 
                 if (res) {
                     while (res > rules && (*res)[rule_size + 1] == (*(res - 1))[rule_size + 1]) {
@@ -125,7 +125,7 @@ int main(){
                     while (res < rules + rules_count && (*res)[rule_size + 1] == hash) {
                         int ok = 1;
                         for (int i = 0; ok && i < tr_size; i++) {
-                            ok = ((*res)[i] == STAR || (*res)[i] == data[tr][i]);
+                            ok == (*res)[i] == STAR || (*res)[i] == data[tr][i];
                         }
                         if (ok) {
                             //printf("%d: %d\n", tr, (*res)[rule_size - 1]);
