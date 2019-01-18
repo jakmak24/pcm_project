@@ -91,10 +91,10 @@ void searchCPU(int *rules, int rules_count ,int rule_size,int rule_t_size, int *
 
 
 __global__
-void search_kernel(int *rules, int rules_count ,int rule_size,int rule_t_size, int *data,int tr_count,int tr_size,int* mask_indexes, int MAX_MASK, int*result,int result_size){
+void search_kernel(int curr_batch_size,int *rules, int rules_count ,int rule_size,int rule_t_size, int *data,int tr_count,int tr_size,int* mask_indexes, int MAX_MASK, int*result,int result_size){
     
     int tr = blockIdx.x*blockDim.x + threadIdx.x;
-    if(tr >= tr_count)return;
+    if(tr >= curr_batch_size)return;
     
     for (int mask = 0; mask < MAX_MASK ; mask++) {
         int tmp_mask = mask;
@@ -143,32 +143,47 @@ void searchGPU(int *rules, int rules_count ,int rule_size,int rule_t_size, int *
     int* mask_indexes_g;
     int* result_g;
     
-    int* result = (int*)calloc(tr_count*100,sizeof(int));
-   
-    cudaAssert(__LINE__,cudaMalloc((void **)&rules_g, rules_count*rule_t_size*sizeof(int)));
-    cudaAssert(__LINE__,cudaMalloc((void **)&mask_indexes_g, (MAX_MASK+1)*sizeof(int)));
-    cudaAssert(__LINE__,cudaMalloc((void **)&result_g, tr_count*100*sizeof(int)));
-    cudaAssert(__LINE__,cudaMalloc((void **)&data_g, tr_count*tr_size*sizeof(int)));
-
-    cudaAssert(__LINE__,cudaMemcpy(rules_g, rules, rules_count*rule_t_size*sizeof(int), cudaMemcpyHostToDevice));
-    cudaAssert(__LINE__,cudaMemcpy(mask_indexes_g, mask_indexes, (MAX_MASK+1)*sizeof(int), cudaMemcpyHostToDevice));
-
-    cudaAssert(__LINE__,cudaMemcpy(data_g, data, tr_count*tr_size*sizeof(int), cudaMemcpyHostToDevice));
-    cudaAssert(__LINE__,cudaMemcpy(result_g, result, tr_count*100*sizeof(int), cudaMemcpyHostToDevice));
-
     int BLOCK_SIZE =256;
     int BLOCK_DIM = 16;
+    int batch_size = BLOCK_SIZE*BLOCK_DIM;
+    int curr_batch_size = batch_size;
+    int batch_count = (tr_count+batch_size-1)/batch_size; //divide and round up;
+    
+    cudaAssert(__LINE__,cudaMalloc((void **)&rules_g, rules_count*rule_t_size*sizeof(int)));
+    cudaAssert(__LINE__,cudaMalloc((void **)&mask_indexes_g, (MAX_MASK+1)*sizeof(int)));
+    cudaAssert(__LINE__,cudaMemcpy(rules_g, rules, rules_count*rule_t_size*sizeof(int), cudaMemcpyHostToDevice));
+    cudaAssert(__LINE__,cudaMemcpy(mask_indexes_g, mask_indexes, (MAX_MASK+1)*sizeof(int), cudaMemcpyHostToDevice));
+    
+    int* result = (int*)calloc(batch_size*100,sizeof(int));
+    cudaAssert(__LINE__,cudaMalloc((void **)&result_g, batch_size*100*sizeof(int)));
+    cudaAssert(__LINE__,cudaMalloc((void **)&data_g, batch_size*tr_size*sizeof(int)));
+    
+    for (int batch_nr=0;batch_nr<batch_count;batch_nr++){
+        
+        if(batch_nr==batch_count-1){
+            curr_batch_size = tr_count - batch_nr*batch_size;
+        }
+        cudaAssert(__LINE__,cudaMemcpy(data_g, data+batch_nr*batch_size*tr_size , curr_batch_size*tr_size*sizeof(int), cudaMemcpyHostToDevice));
+        cudaAssert(__LINE__,cudaMemcpy(result_g, result, curr_batch_size*100*sizeof(int), cudaMemcpyHostToDevice));
 
-    search_kernel<<<BLOCK_DIM,BLOCK_SIZE>>>(rules_g,rules_count ,rule_size,rule_t_size,data_g,tr_count,tr_size,mask_indexes_g,MAX_MASK,result_g,100);
-   
-    cudaAssert(__LINE__,cudaMemcpy(result, result_g , tr_count*100*sizeof(int), cudaMemcpyDeviceToHost));
-
-    // for(int i=0;i<BLOCK_DIM*BLOCK_SIZE;i++){
-        // for(int j=0;j<100;j++){
-            // printf("%d",result[i*100+j]);
+        search_kernel<<<BLOCK_DIM,BLOCK_SIZE>>>(curr_batch_size,rules_g,rules_count ,rule_size,rule_t_size,data_g,tr_count,tr_size,mask_indexes_g,MAX_MASK,result_g,100);
+        cudaAssert(__LINE__,cudaThreadSynchronize());
+        
+        cudaAssert(__LINE__,cudaMemcpy(result, result_g , curr_batch_size*100*sizeof(int), cudaMemcpyDeviceToHost));
+        
+        // for(int j=0;j<curr_batch_size;j++){
+            // printf("%d:",batch_nr*batch_size+j);
+            // for(int k=0;k<100;k++){
+                // printf("%d",result[j*100+k]);
+            // }
+            // printf("\n");
         // }
-        // printf("\n");
-    // }
+        
+        for(int j=0;j<batch_size*100;j++){
+            result[j]=0;
+        }
+        
+    }
     
     free(result);
     cudaAssert(__LINE__,cudaFree(data_g));
@@ -185,8 +200,8 @@ int main(){
     int rules_count = 2000000;
     int rule_size = 11;
     int rule_t_size = rule_size+2;
-    char *transactions_file = (char *)"transactions_tiny.csv";
-    int tr_count = 256*16;
+    char *transactions_file = (char *)"transactions_0.csv";
+    int tr_count = 1000000;
     int tr_size = rule_size - 1;
     
     const int MAX_MASK = (1<<tr_size);
@@ -235,11 +250,11 @@ int main(){
         }
     }
     
-	printf("Sorted: start\n");
-	gettimeofday(&start, NULL);
-    searchCPU(rules,rules_count ,rule_size,rule_t_size,data,tr_count,tr_size,mask_indexes,MAX_MASK);
-	gettimeofday(&end, NULL);
-	printf("Sorted: %f\n",(end.tv_sec  - start.tv_sec)+ (end.tv_usec - start.tv_usec) / 1.e6);
+	// printf("Sorted: start\n");
+	// gettimeofday(&start, NULL);
+    // searchCPU(rules,rules_count ,rule_size,rule_t_size,data,tr_count,tr_size,mask_indexes,MAX_MASK);
+	// gettimeofday(&end, NULL);
+	// printf("Sorted: %f\n",(end.tv_sec  - start.tv_sec)+ (end.tv_usec - start.tv_usec) / 1.e6);
     
     printf("Sorted: start\n");
 	gettimeofday(&start, NULL);

@@ -48,8 +48,8 @@ int main(){
     char *rules_file = "rule_2M.csv";
     int rules_count = 2000000;
     int rule_size = 11;
-    char *transactions_file = "transactions_tiny.csv";
-    int tr_count = 5000;
+    char *transactions_file = "transactions_0.csv";
+    int tr_count = 1000000;
     int tr_size = rule_size - 1;
     
     const int MAX_MASK = (1<<tr_size);
