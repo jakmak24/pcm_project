@@ -201,6 +201,15 @@ void process_on_GPU(int *rules, int rules_count ,int rule_size,int rule_t_size, 
 
         gettimeofday(&end, NULL);
         printf("GPU: end_%d : %f s\n",i,(end.tv_sec  - start.tv_sec)+ (end.tv_usec - start.tv_usec) / 1.e6);
+        
+        // for(int i=0;i<tr_count;i++){
+           // printf("%d:",i);
+           // for(int j=0;j<result_size;j++){
+               // printf("%d",result[i*result_size + j]);
+           // }
+           // printf("\n");
+        // }
+        
         //save_result_csv(out_file,result,data,tr_count,result_size,tr_size);
     }
     
@@ -268,7 +277,7 @@ int main(){
         }
     }
     
-    process_on_CPU(rules,rules_count ,rule_size,rule_t_size,data,tr_count,tr_size,mask_indexes,MAX_MASK,result,result_size);
+    //process_on_CPU(rules,rules_count ,rule_size,rule_t_size,data,tr_count,tr_size,mask_indexes,MAX_MASK,result,result_size);
     process_on_GPU(rules,rules_count,rule_size,rule_t_size,data,tr_count,tr_size,mask_indexes,MAX_MASK,result,result_size);
 	
     return 0;
