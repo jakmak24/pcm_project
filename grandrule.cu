@@ -3,7 +3,7 @@
 #include <sys/time.h>
 
 #define STAR -1
-
+struct timeval start, end;
 
 void load_csv(int*data, char *csv_file, int rows, int cols, int cols_t){
     FILE* file = fopen(csv_file, "r");
@@ -14,6 +14,23 @@ void load_csv(int*data, char *csv_file, int rows, int cols, int cols_t){
                 data[row*cols_t + col] = STAR;
             }
         }
+    }
+    fclose(file);
+}
+
+void save_result_csv(char *csv_file, char* result, int*data, int rows, int cols_result, int cols_data){
+    FILE* file = fopen(csv_file, "w");
+    for (int row = 0; row < rows; row++) {
+        for (int result_col =0 ; result_col<cols_result;result_col++){
+            for(int i=0;i<result[row*cols_result + result_col];i++){
+                for(int j=0;j<cols_data;j++){
+                    fprintf(file,"%d;",data[row*cols_data+j]);
+                }
+                fprintf(file,"%d\n",result_col);
+            }
+            
+        }
+        
     }
     fclose(file);
 }
@@ -50,51 +67,8 @@ int bsearch(int key, int *rules,int rule_t_size,int start,int end){
 	return -1;
 }
 
-void searchCPU(int *rules, int rules_count ,int rule_size,int rule_t_size, int *data,int tr_count,int tr_size,int* mask_indexes, int MAX_MASK){
-    
-    for (int tr = 0; tr < tr_count; tr++) {
-        for (int mask = 0; mask < MAX_MASK ; mask++) {
-            int tmp_mask = mask;
-            int hash = 0;
-            for (int i = 0; i <tr_size; i++) {
-                if (tmp_mask % 2 == 0) {
-                    hash += data[tr*tr_size + i];
-                }
-                tmp_mask /= 2;
-            }
-            int index_start = mask_indexes[mask];
-            int index_end = mask_indexes[mask + 1];
-            
-            if (index_start != index_end) {
-
-                int found = bsearch(hash, rules, rule_t_size, index_start,index_end);
-                if (found != -1) {
-                    
-                    while (found > 0 && (rules[found*rule_t_size + rule_size+1] == rules[(found-1)*rule_t_size + rule_size+1])) {
-                        found--;
-                    }
-                    while (found < rules_count && rules[found*rule_t_size +rule_size+1] == hash) {
-                        int ok = 1;
-                        for (int i = 0; ok && i < tr_size; i++) {
-                            ok = (rules[found*rule_t_size +i] == STAR || (rules[found*rule_t_size +i] == data[tr*tr_size + i]));
-                        }
-                        if (ok) {
-                           //printf("%d,%d\n",tr,rules[found*rule_t_size +rule_size -1]);
-                        }
-                        found++;
-                    }
-                }
-            }
-        }
-    }
-}
-
-
-__global__
-void search_kernel(int curr_batch_size,int *rules, int rules_count ,int rule_size,int rule_t_size, int *data,int tr_count,int tr_size,int* mask_indexes, int MAX_MASK, int*result,int result_size){
-    
-    int tr = blockIdx.x*blockDim.x + threadIdx.x;
-    if(tr >= curr_batch_size)return;
+__host__ __device__
+void process_transaction(int tr,int *rules, int rules_count ,int rule_size,int rule_t_size, int *data,int tr_count,int tr_size,int* mask_indexes, int MAX_MASK, char* result,int result_size){
     
     for (int i=tr*result_size;i<(tr+1)*result_size;i++){
         result[i]=0;
@@ -111,7 +85,7 @@ void search_kernel(int curr_batch_size,int *rules, int rules_count ,int rule_siz
         }
         int index_start = mask_indexes[mask];
         int index_end = mask_indexes[mask + 1];
-        
+
         if (index_start != index_end) {
 
             int found = bsearch(hash, rules, rule_t_size, index_start,index_end);
@@ -126,7 +100,7 @@ void search_kernel(int curr_batch_size,int *rules, int rules_count ,int rule_siz
                         ok = (rules[found*rule_t_size +i] == STAR || (rules[found*rule_t_size +i] == data[tr*tr_size + i]));
                     }
                     if (ok) {
-                       result[tr*result_size + rules[found*rule_t_size +rule_size -1] ]+=1;
+                       result[tr*result_size + rules[found*rule_t_size + rule_size -1]]+=1;
                     }
                     found++;
                 }
@@ -134,23 +108,60 @@ void search_kernel(int curr_batch_size,int *rules, int rules_count ,int rule_siz
         }
     }
     
+    
+}
+
+void process_on_CPU(int *rules, int rules_count ,int rule_size,int rule_t_size, int *data,int tr_count,int tr_size,int* mask_indexes, int MAX_MASK, char* result, int result_size){
+    
+    char transactions_file[20] = "transactions_0.csv";
+    char out_file[20] = "out_0.csv";
+
+    for(int i =0;i<2;i++){
+        transactions_file[13] = '0'+i;
+        out_file[4] = '0'+i;
+        printf("Loading transactions_%d\n",i);
+        load_csv(data,transactions_file, tr_count, tr_size, tr_size);
+        
+        printf("CPU: start_%d\n",i);
+        gettimeofday(&start, NULL);
+        
+        #pragma omp parallel for
+        for (int tr = 0; tr < tr_count; tr++) {
+          process_transaction(tr,rules,rules_count,rule_size,rule_t_size,data,tr_count,tr_size,mask_indexes,MAX_MASK,result,result_size);
+        }
+        
+        gettimeofday(&end, NULL);
+        printf("CPU: end_%d : %f s\n",i,(end.tv_sec  - start.tv_sec)+ (end.tv_usec - start.tv_usec) / 1.e6);
+        
+        //save_result_csv(out_file,result,data,tr_count,result_size,tr_size);
+    }
+}
+
+
+__global__
+void process_batch_kernel(int curr_batch_size,int *rules, int rules_count ,int rule_size,int rule_t_size, int *data,int tr_count,int tr_size,int* mask_indexes, int MAX_MASK, char*result,int result_size){
+    
+    int tr = blockIdx.x*blockDim.x + threadIdx.x;
+    if(tr >= curr_batch_size)return;
+    
+    process_transaction(tr,rules,rules_count,rule_size,rule_t_size,data,tr_count,tr_size,mask_indexes,MAX_MASK,result,result_size);
+    
 }
 
 void cudaAssert(int line,cudaError_t err){
     if(err!=cudaSuccess){printf("%s in %s at line %d\n",cudaGetErrorString(err),__FILE__,line);}
 }
 
-void searchGPU(int *rules, int rules_count ,int rule_size,int rule_t_size, int *data,int tr_count,int tr_size,int* mask_indexes, int MAX_MASK){
+void process_on_GPU(int *rules, int rules_count ,int rule_size,int rule_t_size, int *data,int tr_count,int tr_size,int* mask_indexes, int MAX_MASK,char *result,int result_size){
     
     int* data_g;
     int* rules_g;
     int* mask_indexes_g;
-    int* result_g;
+    char* result_g;
     
     int BLOCK_SIZE =256;
     int BLOCK_DIM = 16;
     int batch_size = BLOCK_SIZE*BLOCK_DIM;
-    int curr_batch_size = batch_size;
     int batch_count = (tr_count+batch_size-1)/batch_size; //divide and round up;
     
     cudaAssert(__LINE__,cudaMalloc((void **)&rules_g, rules_count*rule_t_size*sizeof(int)));
@@ -158,33 +169,41 @@ void searchGPU(int *rules, int rules_count ,int rule_size,int rule_t_size, int *
     cudaAssert(__LINE__,cudaMemcpy(rules_g, rules, rules_count*rule_t_size*sizeof(int), cudaMemcpyHostToDevice));
     cudaAssert(__LINE__,cudaMemcpy(mask_indexes_g, mask_indexes, (MAX_MASK+1)*sizeof(int), cudaMemcpyHostToDevice));
     
-    int* result = (int*)calloc(batch_size*100,sizeof(int));
-    cudaAssert(__LINE__,cudaMalloc((void **)&result_g, batch_size*100*sizeof(int)));
+    cudaAssert(__LINE__,cudaMalloc((void **)&result_g, batch_size*result_size*sizeof(char)));
     cudaAssert(__LINE__,cudaMalloc((void **)&data_g, batch_size*tr_size*sizeof(int)));
     
-    for (int batch_nr=0;batch_nr<batch_count;batch_nr++){
-        
-        if(batch_nr==batch_count-1){
-            curr_batch_size = tr_count - batch_nr*batch_size;
-        }
-        cudaAssert(__LINE__,cudaMemcpy(data_g, data+batch_nr*batch_size*tr_size , curr_batch_size*tr_size*sizeof(int), cudaMemcpyHostToDevice));
+    char transactions_file[20] = "transactions_0.csv";
+    char out_file[20] = "out_0.csv";
 
-        search_kernel<<<BLOCK_DIM,BLOCK_SIZE>>>(curr_batch_size,rules_g,rules_count ,rule_size,rule_t_size,data_g,tr_count,tr_size,mask_indexes_g,MAX_MASK,result_g,100);
-        cudaAssert(__LINE__,cudaThreadSynchronize());
+    for(int i =0;i<2;i++){
+        transactions_file[13] = '0'+i;
+        out_file[4] = '0'+i;
+        printf("Loading transactions_%d\n",i);
+        load_csv(data,transactions_file, tr_count, tr_size, tr_size);
+    
+        printf("GPU: start_%d\n",i);
+        gettimeofday(&start, NULL);
         
-        cudaAssert(__LINE__,cudaMemcpy(result, result_g , curr_batch_size*100*sizeof(int), cudaMemcpyDeviceToHost));
-        
-        // for(int j=0;j<curr_batch_size;j++){
-            // printf("%d:",batch_nr*batch_size+j);
-            // for(int k=0;k<100;k++){
-                // printf("%d",result[j*100+k]);
-            // }
-            // printf("\n");
-        // }
-        
+        int curr_batch_size = batch_size;
+        for (int batch_nr=0;batch_nr<batch_count;batch_nr++){
+            
+            if(batch_nr==batch_count-1){
+                curr_batch_size = tr_count - batch_nr*batch_size;
+            }
+            cudaAssert(__LINE__,cudaMemcpy(data_g, data+batch_nr*batch_size*tr_size , curr_batch_size*tr_size*sizeof(int), cudaMemcpyHostToDevice));
+
+            process_batch_kernel<<<BLOCK_DIM,BLOCK_SIZE>>>(curr_batch_size,rules_g,rules_count ,rule_size,rule_t_size,data_g,tr_count,tr_size,mask_indexes_g,MAX_MASK,result_g,result_size);
+            cudaAssert(__LINE__,cudaThreadSynchronize());
+            
+            cudaAssert(__LINE__,cudaMemcpy(result+batch_nr*batch_size*result_size, result_g , curr_batch_size*result_size*sizeof(char), cudaMemcpyDeviceToHost));
+            
+        }
+
+        gettimeofday(&end, NULL);
+        printf("GPU: end_%d : %f s\n",i,(end.tv_sec  - start.tv_sec)+ (end.tv_usec - start.tv_usec) / 1.e6);
+        //save_result_csv(out_file,result,data,tr_count,result_size,tr_size);
     }
     
-    free(result);
     cudaAssert(__LINE__,cudaFree(data_g));
     cudaAssert(__LINE__,cudaFree(rules_g));
     cudaAssert(__LINE__,cudaFree(mask_indexes_g));
@@ -199,21 +218,21 @@ int main(){
     int rules_count = 2000000;
     int rule_size = 11;
     int rule_t_size = rule_size+2;
-    char *transactions_file = (char *)"transactions_0.csv";
     int tr_count = 1000000;
     int tr_size = rule_size - 1;
     
     const int MAX_MASK = (1<<tr_size);
 
-	struct timeval start, end;
-
 	printf("Loading rules\n");
     int *rules = (int*)calloc(rules_count*(rule_t_size),sizeof(int));
     load_csv(rules,rules_file, rules_count, rule_size, rule_t_size);
-	printf("Loading transactions\n");
+
+    	
     int *data = (int*)calloc(tr_count*(tr_size),sizeof(int));
-    load_csv(data,transactions_file, tr_count, tr_size, tr_size);
-	
+    
+    int result_size = 100;
+    char *result = (char*)calloc(tr_count*(result_size),sizeof(char));
+    
     for (int i = 0; i < rules_count; i++) {
         int mask = 0;
         int hash = 0;
@@ -249,17 +268,8 @@ int main(){
         }
     }
     
-	// printf("Sorted: start\n");
-	// gettimeofday(&start, NULL);
-    // searchCPU(rules,rules_count ,rule_size,rule_t_size,data,tr_count,tr_size,mask_indexes,MAX_MASK);
-	// gettimeofday(&end, NULL);
-	// printf("Sorted: %f\n",(end.tv_sec  - start.tv_sec)+ (end.tv_usec - start.tv_usec) / 1.e6);
-    
-    printf("Sorted: start\n");
-	gettimeofday(&start, NULL);
-    searchGPU(rules,rules_count ,rule_size,rule_t_size,data,tr_count,tr_size,mask_indexes,MAX_MASK);
-	gettimeofday(&end, NULL);
-	printf("Sorted: %f\n",(end.tv_sec  - start.tv_sec)+ (end.tv_usec - start.tv_usec) / 1.e6);
+    process_on_CPU(rules,rules_count ,rule_size,rule_t_size,data,tr_count,tr_size,mask_indexes,MAX_MASK,result,result_size);
+    process_on_GPU(rules,rules_count,rule_size,rule_t_size,data,tr_count,tr_size,mask_indexes,MAX_MASK,result,result_size);
 	
     return 0;
 }
