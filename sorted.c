@@ -13,8 +13,7 @@ int** alloc_two_d(int rows, int cols) {
     return array;
 }
 
-void free_two_d(int*** array, int rows)
-{
+void free_two_d(int*** array, int rows) {
     int **a = *array;
     for (int row = 0; row < rows; row++) {
         free(a[row]);

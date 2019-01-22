@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/time.h>
+#include <string.h>
 
 #define STAR -1
 
@@ -10,6 +11,15 @@ int** alloc_two_d(int rows, int cols) {
         array[row] = calloc(cols, sizeof(int));
     }
     return array;
+}
+
+void free_two_d(int*** array, int rows) {
+    int **a = *array;
+    for (int row = 0; row < rows; row++) {
+        free(a[row]);
+    }
+    free(a);
+    *array = NULL;
 }
 
 int** load_csv(char *csv_file, int rows, int cols, int add_cols){
@@ -28,8 +38,8 @@ int** load_csv(char *csv_file, int rows, int cols, int add_cols){
 }
 
 int cmpfunc (const void * a, const void * b) {
-	const int **r1 = (const int**)a;
-	const int **r2 = (const int**)b;
+    const int **r1 = (const int**)a;
+    const int **r2 = (const int**)b;
     int mask_index = 11;
     int mask_diff = (*r1)[mask_index] - (*r2)[mask_index];
     if (mask_diff) {
@@ -49,19 +59,19 @@ int main(){
     int rules_count = 2000000;
     int rule_size = 11;
     char *transactions_file = "transactions_0.csv";
-    int tr_count = 1000000;
+    int tr_count = 6000;
     int tr_size = rule_size - 1;
-    
+
     const int MAX_MASK = (1<<tr_size);
 
-	struct timeval start, end;
-	gettimeofday(&start, NULL);
+    struct timeval start, end;
+    gettimeofday(&start, NULL);
 
-	printf("Loading rules\n");
     int **rules = load_csv(rules_file, rules_count, rule_size, 2);
-	printf("Loading transactions\n");
     int **data = load_csv(transactions_file, tr_count, tr_size, 0);
-	
+
+    gettimeofday(&start, NULL);
+
     for (int i = 0; i < rules_count; i++) {
         int mask = 0;
         int hash = 0;
@@ -76,11 +86,10 @@ int main(){
         rules[i][rule_size + 1] = hash;
     }
 
-	printf("Sorting rules\n");
-	qsort(rules, rules_count, sizeof(rules[0]), cmpfunc);
+    qsort(rules, rules_count, sizeof(rules[0]), cmpfunc);
 
     int *mask_indexes = calloc(MAX_MASK + 1,sizeof(int));
-    
+
     int cur_mask = rules[0][rule_size];
     for (int i = 1; i < rules_count; i++) {
         if (cur_mask != rules[i][rule_size]) {
@@ -89,7 +98,7 @@ int main(){
             }
             cur_mask = rules[i][rule_size];
         }
-        
+
         if( i==(rules_count-1)){
             for(int j= cur_mask+1;j<MAX_MASK+1;j++){
                 mask_indexes[j]=rules_count;
@@ -97,10 +106,21 @@ int main(){
         }
     }
 
-	printf("Sorted: start\n");
-	gettimeofday(&start, NULL);
+    int **rules_tmp = alloc_two_d(rules_count, rule_size);
 
-    #pragma omp parallel for
+    for (int i = 0; i < rules_count; i++) {
+        memcpy(rules_tmp[i], rules[i], rule_size * sizeof(int));
+    }
+
+    free_two_d(&rules, rules_count);
+    rules = rules_tmp;
+
+    gettimeofday(&end, NULL);
+    printf("Hashes, time for preprocessing %f\n",(end.tv_sec  - start.tv_sec)+ (end.tv_usec - start.tv_usec) / 1.e6);
+
+    gettimeofday(&start, NULL);
+
+#pragma omp parallel for
     for (int tr = 0; tr < tr_count; tr++) {
         for (int mask = 0; mask < MAX_MASK ; mask++) {
             int tmp_mask = mask;
@@ -113,11 +133,11 @@ int main(){
             }
             int index_start = mask_indexes[mask];
             int index_end = mask_indexes[mask + 1];
-            
+
             if (index_start != index_end) {
 
                 int **res = bsearch(&hash, &rules[index_start], index_end - index_start, sizeof(rules[0]), cmphsh);
-                
+
                 if (res) {
                     while (res > rules && (*res)[rule_size + 1] == (*(res - 1))[rule_size + 1]) {
                         res = res - 1;
@@ -131,15 +151,15 @@ int main(){
                             //printf("%d: %d\n", tr, (*res)[rule_size - 1]);
                         }
                         res++;
-                    //printf("%d: %d, previous %d\n", hash, (*res)[rule_size + 1], (*(res - 1))[rule_size + 1]);
+                        //printf("%d: %d, previous %d\n", hash, (*res)[rule_size + 1], (*(res - 1))[rule_size + 1]);
                     }
                 }
             }
         }
     }
-	
-	gettimeofday(&end, NULL);
-	printf("Sorted: %f\n",(end.tv_sec  - start.tv_sec)+ (end.tv_usec - start.tv_usec) / 1.e6);
-	
+
+    gettimeofday(&end, NULL);
+    printf("Hashes, time for %d transactions:  %f\n", tr_count, (end.tv_sec  - start.tv_sec)+ (end.tv_usec - start.tv_usec) / 1.e6);
+
     return 0;
 }
