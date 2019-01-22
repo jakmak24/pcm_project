@@ -109,7 +109,7 @@ int main(){
     int **rules_tmp = alloc_two_d(rules_count, rule_size);
 
     for (int i = 0; i < rules_count; i++) {
-        memcpy(rules_tmp[i], rules[i], rule_size * sizeof(int));
+        memcpy(rules_tmp[i], rules[i], (rule_size + 2) * sizeof(int));
     }
 
     free_two_d(&rules, rules_count);
